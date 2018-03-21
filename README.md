@@ -16,6 +16,10 @@ to "Compile": 'gcc -o test test.c'
 to "Run": 'sudo ./test'
 
 
+
+
+
+
 First, "Build" the module and "Compile" the test file,
 
 Second, "Install" the module and use dmesg to check if it's working,

@@ -1,14 +1,18 @@
 Module:
 
 to "Build": 'make'
+
 to "Install": 'sudo insmod testDev.ko'
+
 to "Remove":  'sudo rmmod testDev'
+
 to "View":  'dmesg'
 
 Testing:
 
 
 to "Compile": 'gcc -o test test.c'
+
 to "Run": 'sudo ./test'
 
 

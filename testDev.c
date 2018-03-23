@@ -32,7 +32,7 @@ static char * message;
 static short messageSize;
 static struct class* charClass = NULL;
 static struct device* charDevice = NULL;
-static char * old;
+static char * temp;
 
 static int __init char_init(void)
 {
@@ -108,33 +108,38 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
         printk(KERN_INFO "testDev: User requested %zu bytes, more bytes than maximum buffer size: %d. Only %d bytes will be returned.\n", len, BUFF_LEN, messageSize);
     
         error_count = copy_to_user(buffer, message, messageSize);
+        temp = (char *) vmalloc(sizeof(char) * BUFF_LEN);
+	temp[0] = '\0';
 	vfree(message);
-        message = (char *) vmalloc(sizeof(char) * BUFF_LEN);
-
+	message=temp;
 	if(error_count == 0)
         {
 	  printk(KERN_INFO "testDev: Sent %d characters to the user\n", messageSize);
 	  messageSize = 0;
+          printk(KERN_INFO "testDev: after send messagesize: %d\n",messageSize);
           return 0;
 
         }  
     }
+
     else
     {     
         error_count = copy_to_user(buffer, message, len); 
+	printk(KERN_INFO "testDev: moving strings around...\n");
+	temp = (char *) vmalloc(sizeof(char) * BUFF_LEN);
+	strncpy(temp, message+len, messageSize-len);
+	vfree(message);
+	message = temp;
+	message[messageSize-len] = '\0';
 
-        old = message;
-        message = (char *) vmalloc(sizeof(char) * BUFF_LEN);
-	strcpy(message, old+len);
-	vfree(old);
+        if(error_count == 0)
+        {
+           printk(KERN_INFO "testDev: Sent %d characters to the user\n", messageSize);
+	   messageSize = messageSize - len;
+           printk(KERN_INFO "testDev: after send messagesize: %d\n",messageSize);
+           return 0;
 
-if(error_count == 0)
-    {
-      printk(KERN_INFO "testDev: Sent %d characters to the user\n", messageSize);
-	messageSize = messageSize - len;
-      return 0;
-
-    }
+        }
 
     }
 
@@ -156,12 +161,12 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
   {
     strcat(message, buffer);
 
-    printk(KERN_INFO "current messagesize: %d\n",messageSize);
+    printk(KERN_INFO "testDev: current messagesize: %d\n",messageSize);
     printk(KERN_INFO "testDev: Received %zu characters from the user\n", len);
 
     strcat(message, "\0");
     messageSize = strlen(message);
-    
+    printk(KERN_INFO "testDev: after copy messagesize: %d\n",messageSize);
     return len;
   }
   
@@ -169,17 +174,17 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
   else
   {
     int space_available = BUFF_LEN - messageSize;
-
+    printk(KERN_INFO "testDev: current messagesize: %d\n",messageSize);
     printk(KERN_INFO "testDev: Buffer would overflow with %zu additional bytes, only attepmting to write %d bytes instead." ,len, space_available);
 
     strncat(message, buffer, space_available);
     
-    
+
     printk(KERN_INFO "testDev: Received %d characters from the user\n", space_available);
 
     strcat(message, "\0");
     messageSize = strlen(message);
-    
+        printk(KERN_INFO "testDev: after copy messagesize: %d\n",messageSize);    
     return space_available;
   }
 }

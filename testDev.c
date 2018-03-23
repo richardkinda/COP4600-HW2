@@ -7,7 +7,7 @@
 #include <asm/uaccess.h>
 #define DEVICE_NAME "testDev"
 #define CLASS_NAME "test"
-#define BUFF_LEN 1024
+#define BUFF_LEN 256
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Christofer Padilla, Richard Tsai, Matthew Winchester");
@@ -32,6 +32,7 @@ static char * message;
 static short messageSize;
 static struct class* charClass = NULL;
 static struct device* charDevice = NULL;
+static char * old;
 
 static int __init char_init(void)
 {
@@ -101,33 +102,86 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 
   if(messageSize > 0)
   {
-    error_count = copy_to_user(buffer, message, messageSize);
 
-    if(error_count == 0)
+    if (len > BUFF_LEN)
+    {
+        printk(KERN_INFO "testDev: User requested %zu bytes, more bytes than maximum buffer size: %d. Only %d bytes will be returned.\n", len, BUFF_LEN, messageSize);
+    
+        error_count = copy_to_user(buffer, message, messageSize);
+	vfree(message);
+        message = (char *) vmalloc(sizeof(char) * BUFF_LEN);
+
+	if(error_count == 0)
+        {
+	  printk(KERN_INFO "testDev: Sent %d characters to the user\n", messageSize);
+	  messageSize = 0;
+          return 0;
+
+        }  
+    }
+    else
+    {     
+        error_count = copy_to_user(buffer, message, len); 
+
+        old = message;
+        message = (char *) vmalloc(sizeof(char) * BUFF_LEN);
+	strcpy(message, old+len);
+	vfree(old);
+
+if(error_count == 0)
     {
       printk(KERN_INFO "testDev: Sent %d characters to the user\n", messageSize);
-      return (messageSize = 0);
+	messageSize = messageSize - len;
+      return 0;
+
     }
+
+    }
+
+    
 
       printk(KERN_INFO "testDev: Failed to send %d characters to the user\n", error_count);
       return -EFAULT;
   }
 
   printk(KERN_INFO "testDev: User tried to read the empty buffer\n");
-  return -EFAULT;
+  copy_to_user(buffer, message, 0);
+  return 0;
 }
+
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset)
 {
-  if(messageSize == 0)
-    sprintf(message, "%s(%zu letters)", buffer, len);
-  else
+  // Make sure the incoming message will not overflow us (-1 because we need space for \0)
+  if (len + messageSize < BUFF_LEN-1)
+  {
     strcat(message, buffer);
 
-  strcat(message, "\0");
-  messageSize = strlen(message);
+    printk(KERN_INFO "current messagesize: %d\n",messageSize);
+    printk(KERN_INFO "testDev: Received %zu characters from the user\n", len);
 
-  printk(KERN_INFO "testDev: Received %zu characters from the user\n", len);
-  return len;
+    strcat(message, "\0");
+    messageSize = strlen(message);
+    
+    return len;
+  }
+  
+  // The buffer will be too big, only read in the space we have left
+  else
+  {
+    int space_available = BUFF_LEN - messageSize;
+
+    printk(KERN_INFO "testDev: Buffer would overflow with %zu additional bytes, only attepmting to write %d bytes instead." ,len, space_available);
+
+    strncat(message, buffer, space_available);
+    
+    
+    printk(KERN_INFO "testDev: Received %d characters from the user\n", space_available);
+
+    strcat(message, "\0");
+    messageSize = strlen(message);
+    
+    return space_available;
+  }
 }
 
 
